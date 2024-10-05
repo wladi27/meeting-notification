@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const webPush = require('web-push');
 const bodyParser = require('body-parser');
@@ -6,15 +7,15 @@ const mysql = require('mysql2');
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
 const vapidKeys = {
-    publicKey: 'BHrsn8mzggbB7MhwQQo2V_izX9qxEtSJMzTNTAMfBDMiOK2xrL3k_KGpJP3S_1Wb_SvE_eEAPsIATp_D1PCGMus',
-    privateKey: 'i2-A4Fnk7YN5qd-4eljzC8fNMXiVJEvo_YeSk9z8HKI'
+    publicKey: process.env.VAPID_PUBLIC_KEY,
+    privateKey: process.env.VAPID_PRIVATE_KEY
 };
 
 webPush.setVapidDetails(
@@ -24,11 +25,11 @@ webPush.setVapidDetails(
 );
 
 const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'notificaciones',
-    port: 3306
+    host: process.env.MYSQL_HOST,
+    user: process.env.MYSQL_USER,
+    password: process.env.MYSQL_PASSWORD,
+    database: process.env.MYSQL_DATABASE,
+    port: process.env.MYSQL_PORT
 });
 
 db.connect(err => {
