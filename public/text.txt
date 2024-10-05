@@ -1,0 +1,111 @@
+const express = require('express');
+const webPush = require('web-push');
+const bodyParser = require('body-parser');
+const cors = require('cors');
+const { v4: uuidv4 } = require('uuid');
+
+const app = express();
+const port = 3000;
+
+app.use(cors());
+app.use(bodyParser.json());
+app.use(express.static('public'));
+
+// Claves VAPID
+const vapidKeys = {
+    publicKey: 'BIR48PAGcsmL-UaSdH2qFVuI6kuZlu9HziYoT7TZrd18Vx5wHQiCeTkS3Tg_C2BlaGueG7Aj3ed5WkTNheCINuU',
+    privateKey: 'K9Ygho_eJ-O2EMTDgFroROO2ituHDQXxP689acXgt9g'
+};
+
+webPush.setVapidDetails(
+    'mailto:tu-email@ejemplo.com',
+    vapidKeys.publicKey,
+    vapidKeys.privateKey
+);
+
+const subscribers = [];
+
+// Endpoint para suscribirse
+app.post('/subscribe', (req, res) => {
+    const subscription = req.body;
+    const userId = '9a9e235a-10cb-4a21-a6f9-aca6ea74a8d2'; // Generar un ID único
+    const subscriberWithId = { ...subscription, userId };
+
+    console.log('Nueva suscripción:', subscriberWithId);
+    subscribers.push(subscriberWithId);
+
+    const payload = JSON.stringify({ 
+        title: 'Notificación de bienvenida', 
+        body: '¡Bienvenido a nuestro servicio de notificaciones!',
+        url: 'https://fast.com/es/' // URL para abrir
+    });
+
+    webPush.sendNotification(subscription, payload)
+        .then(result => res.status(200).send('Notificación enviada'))
+        .catch(err => {
+            console.error('Error al enviar notificación:', err);
+            res.sendStatus(500);
+        });
+});
+
+// Endpoint para obtener la lista de suscriptores
+app.get('/subscribers', (req, res) => {
+    res.json(subscribers);
+});
+
+// Función para enviar notificaciones a un usuario específico
+const sendNotificationToUser = (userId, message, title, url) => {
+    const subscriber = subscribers.find(sub => sub.userId === userId);
+    if (subscriber) {
+        const payload = JSON.stringify({
+            title: title || 'Notificación personalizada',
+            body: message,
+            url: url || 'https://jx7n8kdt-5500.use2.devtunnels.ms/public/'
+        });
+        webPush.sendNotification(subscriber, payload)
+            .catch(err => console.error('Error al enviar notificación:', err));
+    } else {
+        console.log('Usuario no encontrado');
+    }
+};
+
+// Enviar notificaciones cada 10 segundos solo al usuario específico
+setInterval(() => {
+    const targetUserId = '9a9e235a-10cb-4a21-a6f9-aca6ea74a8d2';
+    const message = 'Este es un mensaje enviado cada 10 segundos solo para el usuario específico.';
+    sendNotificationToUser(targetUserId, message);
+}, 10000); // 10 segundos
+
+app.listen(port, () => {
+    console.log(`Servidor ejecutándose en http://localhost:${port}`);
+});
+
+
+
+// Código del Service Worker
+self.addEventListener('push', function(event) {
+    const data = event.data.json();
+    const options = {
+        body: data.body,
+        icon: 'icon.png', // Asegúrate de tener un icono o quita esta línea
+        data: {
+            url: data.url // Añadir la URL al payload
+        }
+    };
+    event.waitUntil(
+        self.registration.showNotification(data.title, options)
+    );
+});
+
+self.addEventListener('notificationclick', function(event) {
+    event.notification.close(); // Cierra la notificación al hacer clic
+    const url = event.notification.data.url; // Obtener la URL del payload
+
+    if (url) {
+        event.waitUntil(
+            clients.openWindow(url) // Abrir la URL en una nueva pestaña
+        );
+    } else {
+        console.warn('La notificación no contiene una URL para abrir.');
+    }
+});

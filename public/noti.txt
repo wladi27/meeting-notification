@@ -1,0 +1,442 @@
+const express = require('express');
+const webPush = require('web-push');
+const bodyParser = require('body-parser');
+const cors = require('cors');
+const mysql = require('mysql2');
+const { v4: uuidv4 } = require('uuid');
+
+const app = express();
+const port = 3000;
+
+app.use(cors());
+app.use(bodyParser.json());
+app.use(express.static('public'));
+
+const vapidKeys = {
+    publicKey: 'BHrsn8mzggbB7MhwQQo2V_izX9qxEtSJMzTNTAMfBDMiOK2xrL3k_KGpJP3S_1Wb_SvE_eEAPsIATp_D1PCGMus',
+    privateKey: 'i2-A4Fnk7YN5qd-4eljzC8fNMXiVJEvo_YeSk9z8HKI'
+};
+
+webPush.setVapidDetails(
+    'mailto:tu-email@ejemplo.com',
+    vapidKeys.publicKey,
+    vapidKeys.privateKey
+);
+
+const db = mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: '',
+    database: 'notificaciones',
+    port: 3306
+});
+
+db.connect(err => {
+    if (err) {
+        console.error('Error conectando a la base de datos:', err.stack);
+        return;
+    }
+    console.log('Conectado a la base de datos MySQL.');
+});
+
+db.query(`CREATE TABLE IF NOT EXISTS subscribers (
+    userId VARCHAR(36) PRIMARY KEY,
+    subscription TEXT
+)`, (err) => {
+    if (err) {
+        console.error(err.message);
+    }
+});
+
+db.query(`CREATE TABLE IF NOT EXISTS meetings (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    userId VARCHAR(36),
+    title VARCHAR(255),
+    meetingTime DATETIME,
+    endTime DATETIME,
+    FOREIGN KEY (userId) REFERENCES subscribers(userId)
+)`, (err) => {
+    if (err) {
+        console.error(err.message);
+    }
+});
+
+app.post('/subscribe', (req, res) => {
+    const subscription = JSON.stringify(req.body);
+    const userId = uuidv4();
+
+    db.query(`SELECT * FROM subscribers WHERE subscription = ?`, [subscription], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ error: 'Error al verificar la suscripción' });
+        }
+        if (rows.length > 0) {
+            return res.status(200).json({ userId: rows[0].userId });
+        }
+
+        db.query(`INSERT INTO subscribers (userId, subscription) VALUES (?, ?)`, [userId, subscription], (err) => {
+            if (err) {
+                return res.status(500).json({ error: 'Error al guardar la suscripción' });
+            }
+
+            const payload = JSON.stringify({ 
+                title: 'Notificación de bienvenida', 
+                body: '¡Bienvenido a nuestro servicio de notificaciones!',
+                url: 'https://fast.com/es/'
+            });
+
+            webPush.sendNotification(JSON.parse(subscription), payload)
+                .then(() => res.status(200).json({ userId }))
+                .catch(err => {
+                    console.error('Error al enviar notificación:', err);
+                    res.sendStatus(500);
+                });
+        });
+    });
+});
+
+app.get('/subscribers', (req, res) => {
+    db.query(`SELECT * FROM subscribers`, (err, rows) => {
+        if (err) {
+            return res.sendStatus(500);
+        }
+        res.json(rows);
+    });
+});
+
+app.get('/meetings', (req, res) => {
+    const userId = req.query.userId;
+    db.query(`SELECT * FROM meetings WHERE userId = ?`, [userId], (err, rows) => {
+        if (err) {
+            return res.sendStatus(500);
+        }
+        res.json(rows);
+    });
+});
+
+app.post('/meetings', (req, res) => {
+    const { title, meetingTime, endTime, userId } = req.body;
+
+    if (!userId || !meetingTime || !endTime || !title) {
+        return res.status(400).json({ message: 'Todos los campos son requeridos.' });
+    }
+
+    db.query(`SELECT * FROM meetings WHERE userId = ? AND meetingTime = ?`, [userId, meetingTime], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ message: 'Error del servidor al verificar la reunión.' });
+        }
+        if (rows.length > 0) {
+            return res.status(409).json({ message: 'La reunión ya está agendada.' });
+        }
+
+        const query = `INSERT INTO meetings (title, userId, meetingTime, endTime) VALUES (?, ?, ?, ?)`;
+        db.query(query, [title, userId, meetingTime, endTime], (err, result) => {
+            if (err) {
+                return res.status(500).json({ message: 'Error del servidor al agendar la reunión.' });
+            }
+
+            const timeUntilMeeting = new Date(meetingTime).getTime() - Date.now();
+            if (timeUntilMeeting > 60000) {
+                setTimeout(() => {
+                    sendNotificationToUser(userId, `Tu reunión "${title}" está por comenzar`, title, meetingTime, endTime);
+                }, timeUntilMeeting - 60000);
+            }
+
+            return res.status(200).json({ message: 'Reunión agendada con éxito.' });
+        });
+    });
+});
+
+const sendNotificationToUser = (userId, message, title, meetingTime, endTime) => {
+    db.query(`SELECT subscription FROM subscribers WHERE userId = ?`, [userId], (err, rows) => {
+        if (err) {
+            console.error('Error al obtener la suscripción:', err.message);
+            return;
+        }
+        if (rows.length > 0) {
+            const subscription = JSON.parse(rows[0].subscription);
+            const payload = JSON.stringify({
+                title: title,
+                body: `${message} desde ${new Date(meetingTime).toLocaleString()} hasta ${new Date(endTime).toLocaleString()}`,
+                url: 'https://tu-url.com'
+            });
+            webPush.sendNotification(subscription, payload)
+                .then(() => console.log('Notificación enviada con éxito'))
+                .catch(err => console.error('Error al enviar notificación:', err));
+        } else {
+            console.log('No se encontró suscripción para el usuario:', userId);
+        }
+    });
+};
+
+app.listen(port, () => {
+    console.log(`Servidor escuchando en http://localhost:${port}`);
+});
+
+const applicationServerKey = urlB64ToUint8Array('BHrsn8mzggbB7MhwQQo2V_izX9qxEtSJMzTNTAMfBDMiOK2xrL3k_KGpJP3S_1Wb_SvE_eEAPsIATp_D1PCGMus');
+
+document.getElementById('subscribe').addEventListener('click', async () => {
+    if ('serviceWorker' in navigator) {
+        try {
+            const registration = await navigator.serviceWorker.register('/public/service-worker.js');
+            console.log('Service Worker registrado con éxito:', registration);
+
+            let subscription = await registration.pushManager.getSubscription();
+            if (!subscription) {
+                subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: applicationServerKey
+                });
+                console.log('Usuario suscrito:', subscription);
+
+                const response = await fetch('https://jx7n8kdt-3000.use2.devtunnels.ms/subscribe', {
+                    method: 'POST',
+                    body: JSON.stringify(subscription),
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Error al suscribirse en el servidor');
+                }
+
+                const data = await response.json();
+                localStorage.setItem('userId', data.userId);
+                fetchSubscribers();
+            } else {
+                console.log('Ya está suscrito:', subscription);
+            }
+        } catch (error) {
+            console.error('Error al registrar el Service Worker o suscribirse:', error);
+        }
+    }
+});
+
+document.getElementById('meeting-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const title = document.getElementById('meeting-title').value;
+    const meetingTime = document.getElementById('meeting-time').value;
+    const endTime = document.getElementById('meeting-end-time').value;
+    const userId = localStorage.getItem('userId');
+
+    if (!userId) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Debes suscribirte primero para agendar una reunión.'
+        });
+        return;
+    }
+
+    const submitButton = event.target.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+
+    try {
+        const response = await fetch('https://jx7n8kdt-3000.use2.devtunnels.ms/meetings', {
+            method: 'POST',
+            body: JSON.stringify({ title, meetingTime, endTime, userId }),
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+
+        Swal.fire({
+            icon: response.ok ? 'success' : 'error',
+            title: response.ok ? 'Éxito' : 'Error',
+            text: data.message
+        });
+
+        if (response.ok) {
+            document.getElementById('meeting-form').reset();
+            document.getElementById('meeting-modal').classList.add('hidden');
+            updateMeetingList(userId);
+        }
+    } catch (error) {
+        console.error('Error al agendar la reunión:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Hubo un problema al conectar con el servidor.'
+        });
+    } finally {
+        submitButton.disabled = false;
+    }
+});
+
+async function updateMeetingList(userId) {
+    try {
+        const response = await fetch(`https://jx7n8kdt-3000.use2.devtunnels.ms/meetings?userId=${userId}`);
+        const meetings = await response.json();
+        const meetingCards = document.getElementById('meeting-cards');
+        meetingCards.innerHTML = '';
+
+        meetings.forEach(meeting => {
+            const card = document.createElement('div');
+            card.className = 'bg-white rounded-lg p-4 shadow';
+            const meetingTime = new Date(meeting.meetingTime);
+            card.innerHTML = `
+                <div>Reunión: ${meetingTime.toLocaleString()}</div>
+                <div id="countdown-${meeting.id}"></div>
+            `;
+            meetingCards.appendChild(card);
+            startCountdown(meeting.id, meetingTime);
+        });
+    } catch (error) {
+        console.error('Error al obtener la lista de reuniones:', error);
+    }
+}
+
+function startCountdown(meetingId, meetingTime) {
+    const countdownElement = document.getElementById(`countdown-${meetingId}`);
+    let interval;
+
+    const updateCountdown = () => {
+        const now = new Date();
+        const timeDifference = meetingTime - now;
+        if (timeDifference <= 0) {
+            countdownElement.textContent = 'La reunión ha comenzado';
+            clearInterval(interval);
+            return;
+        }
+        const hours = Math.floor(timeDifference / (1000 * 60 * 60));
+        const minutes = Math.floor((timeDifference % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((timeDifference % (1000 * 60)) / 1000);
+        countdownElement.textContent = `Comienza en: ${hours}h ${minutes}m ${seconds}s`;
+    };
+
+    updateCountdown();
+    interval = setInterval(updateCountdown, 1000);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const userId = localStorage.getItem('userId');
+    if (userId) {
+        updateMeetingList(userId);
+    }
+});
+
+function urlB64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    return new Uint8Array([...rawData].map(char => char.charCodeAt(0)));
+}
+
+const fetchSubscribers = async () => {
+    try {
+        const response = await fetch('https://jx7n8kdt-3000.use2.devtunnels.ms/subscribers');
+        const subscribers = await response.json();
+        const subscriberList = document.getElementById('subscriber-list');
+        subscriberList.innerHTML = '';
+
+        subscribers.forEach(subscriber => {
+            const listItem = document.createElement('li');
+            listItem.textContent = subscriber.userId;
+            subscriberList.appendChild(listItem);
+        });
+    } catch (error) {
+        console.error('Error al obtener la lista de suscriptores:', error);
+    }
+};
+
+document.getElementById('add-meeting').addEventListener('click', () => {
+    document.getElementById('meeting-modal').classList.remove('hidden');
+});
+
+document.getElementById('close-modal').addEventListener('click', () => {
+    document.getElementById('meeting-modal').classList.add('hidden');
+});
+
+self.addEventListener('push', function(event) {
+    const data = event.data.json();
+    const options = {
+        body: data.body,
+        icon: 'icon.png',
+        data: {
+            url: data.url
+        }
+    };
+
+    event.waitUntil(
+        self.registration.showNotification(data.title, options)
+    );
+});
+
+
+self.addEventListener('notificationclick', function(event) {
+    event.notification.close();
+    event.waitUntil(
+        clients.openWindow(event.notification.data.url)
+    );
+});
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PWA Push Notifications</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        button {
+            font-size: 16px;
+            padding: 10px 20px;
+            border-radius: 20px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #007bff;
+        }
+        svg {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+        }
+        #add-meeting {
+            padding: 10px 15px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-5">
+        <h1 class="text-3xl font-bold mb-5">Notificaciones Push en PWA</h1>
+        <button id="subscribe" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">
+            <i class="fas fa-bell"></i> Suscribirse a Notificaciones
+        </button>
+
+        <button id="add-meeting" class="fixed bottom-0 right-0 m-4 bg-blue-500 text-white px-4 py-2 rounded-full hover:bg-blue-600">
+            <i class="fas fa-plus"></i>
+        </button>
+        <div id="meeting-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-screen w-screen">
+            <div class="relative top-20 mx-auto p-5 max-w-sm shadow-lg bg-white rounded-md">
+                <h2 class="text-2xl font-semibold">Agendar Reunión</h2>
+                <form id="meeting-form" class="mt-4">
+                    <label for="meeting-title" class="block text-gray-700">Título de la Reunión:</label>
+                    <input type="text" id="meeting-title" required class="mt-1 block w-full border border-gray-300 rounded-md p-2">
+                    
+                    <label for="meeting-time" class="block text-gray-700">Fecha y Hora de Inicio:</label>
+                    <input type="datetime-local" id="meeting-time" required class="mt-1 block w-full border border-gray-300 rounded-md p-2">
+                    
+                    <label for="meeting-end-time" class="block text-gray-700">Fecha y Hora de Finalización:</label>
+                    <input type="datetime-local" id="meeting-end-time" required class="mt-1 block w-full border border-gray-300 rounded-md p-2">
+                    
+                    <button type="submit" class="mt-4 bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600">
+                        <i class="fas fa-calendar-check"></i> Agendar Reunión
+                    </button>
+                </form>
+                <button id="close-modal" class="absolute top-0 right-0 m-4 bg-red-500 text-white px-4 py-2 rounded-full hover:bg-red-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+
+        <h2 class="text-2xl font-semibold mt-10">Mis Reuniones</h2>
+        <div id="meeting-cards" class="grid grid-cols-1 gap-4 mt-4"></div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

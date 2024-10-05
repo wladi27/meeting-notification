@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PWA Push Notifications</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        button {
+            font-size: 16px;
+            padding: 10px 20px;
+            border-radius: 20px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #007bff;
+        }
+        svg {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+        }
+        #add-meeting {
+            padding: 10px 15px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-5">
+        <h1 class="text-3xl font-bold mb-5">SyncMeeting</h1>
+        <button id="subscribe" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">
+            <i class="fas fa-bell"></i> Suscribirse a Notificaciones
+        </button>
+
+        <button id="add-meeting" class="fixed bottom-0 right-0 m-4 bg-blue-500 text-white px-4 py-2 rounded-full hover:bg-blue-600">
+            <i class="fas fa-plus"></i>
+        </button>
+        <div id="meeting-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-screen w-screen">
+            <div class="relative top-20 mx-auto p-5 max-w-sm shadow-lg bg-white rounded-md">
+                <h2 class="text-2xl font-semibold">Agendar Reunión</h2>
+                <form id="meeting-form" class="mt-4">
+                    <label for="meeting-title" class="block text-gray-700">Título de la Reunión:</label>
+                    <input type="text" id="meeting-title" required class="mt-1 block w-full border border-gray-300 rounded-md p-2">
+                    
+                    <label for="meeting-time" class="block text-gray-700">Fecha y Hora de Inicio:</label>
+                    <input type="datetime-local" id="meeting-time" required class="mt-1 block w-full border border-gray-300 rounded-md p-2">
+                    
+                    <label for="meeting-end-time" class="block text-gray-700">Fecha y Hora de Finalización:</label>
+                    <input type="datetime-local" id="meeting-end-time" required class="mt-1 block w-full border border-gray-300 rounded-md p-2">
+                    
+                    <button type="submit" class="mt-4 bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600">
+                        <i class="fas fa-calendar-check"></i> Agendar Reunión
+                    </button>
+                </form>
+                <button id="close-modal" class="absolute top-0 right-0 m-4 bg-red-500 text-white px-4 py-2 rounded-full hover:bg-red-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+
+        <h2 class="text-2xl font-semibold mt-10">Mis Reuniones</h2>
+        <div id="meeting-cards" class="grid grid-cols-1 gap-4 mt-4"></div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
