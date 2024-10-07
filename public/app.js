@@ -3,7 +3,7 @@ const applicationServerKey = urlB64ToUint8Array('BHrsn8mzggbB7MhwQQo2V_izX9qxEtS
 document.getElementById('subscribe').addEventListener('click', async () => {
     if ('serviceWorker' in navigator) {
         try {
-            const registration = await navigator.serviceWorker.register('/public/service-worker.js');
+            const registration = await navigator.serviceWorker.register('/service-worker.js');
             console.log('Service Worker registrado con éxito:', registration);
 
             let subscription = await registration.pushManager.getSubscription();
