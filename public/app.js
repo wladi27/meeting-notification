@@ -14,7 +14,7 @@ document.getElementById('subscribe').addEventListener('click', async () => {
                 });
                 console.log('Usuario suscrito:', subscription);
 
-                const response = await fetch('https://jx7n8kdt-3000.use2.devtunnels.ms/subscribe', {
+                const response = await fetch('https://meeting-notification-production.up.railway.app/subscribe', {
                     method: 'POST',
                     body: JSON.stringify(subscription),
                     headers: {
@@ -58,7 +58,7 @@ document.getElementById('meeting-form').addEventListener('submit', async (event)
     submitButton.disabled = true;
 
     try {
-        const response = await fetch('https://jx7n8kdt-3000.use2.devtunnels.ms/meetings', {
+        const response = await fetch('https://meeting-notification-production.up.railway.app/meetings', {
             method: 'POST',
             body: JSON.stringify({ title, meetingTime, endTime, userId }),
             headers: {
@@ -93,7 +93,7 @@ document.getElementById('meeting-form').addEventListener('submit', async (event)
 
 async function updateMeetingList(userId) {
     try {
-        const response = await fetch(`https://jx7n8kdt-3000.use2.devtunnels.ms/meetings?userId=${userId}`);
+        const response = await fetch(`https://meeting-notification-production.up.railway.app/p.railway.app/meetings?userId=${userId}`);
         const meetings = await response.json();
         const meetingCards = document.getElementById('meeting-cards');
         meetingCards.innerHTML = '';
@@ -177,7 +177,7 @@ function urlB64ToUint8Array(base64String) {
 
 const fetchSubscribers = async () => {
     try {
-        const response = await fetch('https://jx7n8kdt-3000.use2.devtunnels.ms/subscribers');
+        const response = await fetch('https://meeting-notification-production.up.railway.app/subscribers');
         const subscribers = await response.json();
         const subscriberList = document.getElementById('subscriber-list');
         subscriberList.innerHTML = '';
